@@ -1,0 +1,213 @@
+---
+title: "Stat. 652: Final_pe7112"
+author: "Prof. Eric A. Suess"
+format: 
+  html:
+    self-contained: true
+---
+
+Answer two questions:
+
+1.  What are the important variables identified by the Boruta algorithm from the **Ozone** data?
+
+**Answer:**
+
+**Important attributes:** v1,v4,v5,v7,v8,v9,v10,v11,v12,v13.
+
+**Unimportant attributes:** v2 , v3 , v6.
+
+Boruta.Short got 2 tentative attributes v2,v6 due to less number of iterations. After applying TentativeRoughFix function these are classified as unimportant attributes
+
+2.  What are the important variables identified by the Boruta algorithm from the **titanic training** data?
+
+**Answer:**
+
+**Important attributes:** "pclass", "sex" "age" "sib_sp" "parch" "ticket" "fare" "cabin" "embarked".
+
+**Unimportant attributes:** "PassengerId".
+
+**Tentative attributes:** "Name"
+
+After applying TentativeRoughFix function the "name" attribute is classified under important attributes.
+
+```{r}
+library(pacman)
+p_load(tidyverse, janitor, naniar, DataExplorer, Boruta, mlbench)
+```
+
+```{r}
+data(Ozone)
+
+head(Ozone)
+```
+
+Note that the target variable is V4 = Daily maximum one-hour-average ozone reading.
+
+Convert V1, V2, and V3 to integers.
+
+```{r}
+Ozone <- Ozone %>% mutate(
+  V1 = as.integer(V1),
+  V2 = as.integer(V2),
+  V3 = as.integer(V3)
+)
+
+head(Ozone)
+```
+
+```{r}
+Ozone2 <- Ozone %>% clean_names()
+
+head(Ozone2)
+```
+
+It is always a good idea to check for duplicate records/examples/rows in your dataset.
+
+```{r}
+get_dupes(Ozone2)
+```
+
+Start by investigating the missing values and completeness of the features in the data. Note that the *age* variable contains some missing values.
+
+```{r}
+vis_miss(Ozone2)
+gg_miss_var(Ozone2)
+gg_miss_var(Ozone2, show_pct = TRUE)
+```
+
+Drop V9 because it is missing more than 40% of its values.
+
+```{r}
+Ozone2 <- Ozone2 %>% select(-v9)
+
+vis_miss(Ozone2)
+gg_miss_var(Ozone2)
+gg_miss_var(Ozone2, show_pct = TRUE)
+```
+
+```{r}
+Ozone2 <- drop_na(Ozone2)
+
+vis_miss(Ozone2)
+gg_miss_var(Ozone2)
+gg_miss_var(Ozone2, show_pct = TRUE)
+```
+
+```{r}
+Boruta.Ozone <- Boruta(v4 ~ ., data = Ozone2, doTrace = 2, ntree = 500)
+```
+
+```{r}
+Boruta.Ozone
+```
+
+```{r}
+plot(Boruta.Ozone)
+```
+
+```{r}
+Boruta.Short <- Boruta(v4 ~ ., data = Ozone2, maxRuns = 12)
+```
+
+```{r}
+Boruta.Short 
+```
+
+```{r}
+plot(Boruta.Short)
+```
+
+```{r}
+TentativeRoughFix(Boruta.Short)
+```
+
+```{r}
+getConfirmedFormula(Boruta.Ozone)
+```
+
+```{r}
+attStats(Boruta.Ozone)
+```
+
+```{r}
+plotImpHistory(Boruta.Ozone)
+```
+
+```{r}
+library(titanic)
+
+data(titanic_train)
+
+```
+
+```{r}
+
+library(tidyverse) 
+library(janitor)   
+library(naniar)    
+library(Boruta)    
+```
+
+```{r}
+
+titanic_train <- titanic_train %>%
+  mutate(
+    Survived = as.factor(Survived),
+    Pclass = as.factor(Pclass),
+    Sex = as.factor(Sex),
+    Embarked = as.factor(Embarked),
+    Age = as.numeric(Age), 
+    SibSp = as.integer(SibSp),
+    Parch = as.integer(Parch),
+    Fare = as.numeric(Fare)
+  ) %>%
+  clean_names() 
+
+```
+
+```{r}
+# Check for duplicates
+if (any(duplicated(titanic_train))) {
+  titanic_train <- titanic_train[!duplicated(titanic_train), ]
+}
+```
+
+```{r}
+# Visualize missing values
+vis_miss(titanic_train)
+```
+
+```{r}
+titanic_train <- drop_na(titanic_train)
+```
+
+```{r}
+set.seed(123) # Set seed 
+boruta_output <- Boruta(survived ~ ., data = titanic_train, doTrace = 0)
+```
+
+```{r}
+print(boruta_output)
+```
+
+```{r}
+plot(boruta_output)
+```
+
+```{r}
+TentativeRoughFix(boruta_output)
+```
+
+```{r}
+boruta_stats <- attStats(boruta_output)
+confirmed_vars <- rownames(boruta_stats[boruta_stats$decision == 'Confirmed', ])
+print(confirmed_vars)
+```
+
+```{r}
+attStats(boruta_output)
+```
+
+```{r}
+plotImpHistory(boruta_output)
+```
