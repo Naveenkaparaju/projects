@@ -1,0 +1,325 @@
+---
+title: "project_pe7112"
+format: html
+editor: visual
+---
+
+## Quarto
+
+```{r}
+library(tidymodels)  
+
+# Helper packages
+library(readr)       
+library(vip)        
+```
+
+## THE HOTEL BOOKINGS DATA
+
+```{r}
+library(tidymodels)
+library(readr)
+
+hotels <- 
+  read_csv("hotels.csv") %>%
+  mutate(across(where(is.character), as.factor))
+
+dim(hotels)
+
+
+```
+
+```{r}
+glimpse(hotels)
+
+```
+
+```{r}
+hotels %>% 
+  count(children) %>% 
+  mutate(prop = n/sum(n))
+
+```
+
+## DATA SPLITTING & RESAMPLING
+
+```{r}
+set.seed(123)
+splits      <- initial_split(hotels, strata = children)
+
+hotel_other <- training(splits)
+hotel_test  <- testing(splits)
+
+# training set proportions by children
+hotel_other %>% 
+  count(children) %>% 
+  mutate(prop = n/sum(n))
+
+
+# test set proportions by children
+hotel_test  %>% 
+  count(children) %>% 
+  mutate(prop = n/sum(n))
+
+```
+
+```{r}
+set.seed(234)
+val_set <- validation_split(hotel_other, 
+                            strata = children, 
+                            prop = 0.80)
+val_set
+
+```
+
+### **Question A)**
+
+### PENALIZED LOGISTIC REGRESSION
+
+### **Build the model**
+
+```{r}
+lr_mod <- 
+  logistic_reg(penalty = tune(), mixture = 1) %>% 
+  set_engine("glmnet")
+```
+
+### **Create the recipe**
+
+```{r}
+holidays <- c("AllSouls", "AshWednesday", "ChristmasEve", "Easter", 
+              "ChristmasDay", "GoodFriday", "NewYearsDay", "PalmSunday")
+
+lr_recipe <- 
+  recipe(children ~ ., data = hotel_other) %>% 
+  step_date(arrival_date) %>% 
+  step_holiday(arrival_date, holidays = holidays) %>% 
+  step_rm(arrival_date) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_predictors())
+```
+
+### **Create the workflow**
+
+```{r}
+lr_workflow <- 
+  workflow() %>% 
+  add_model(lr_mod) %>% 
+  add_recipe(lr_recipe)
+```
+
+### **Create the grid for tuning**
+
+```{r}
+lr_reg_grid <- tibble(penalty = 10^seq(-4, -1, length.out = 30))
+
+lr_reg_grid %>% top_n(-5) # lowest penalty values
+
+
+```
+
+```{r}
+lr_reg_grid %>% top_n(5)  # highest penalty values
+```
+
+### **Train and tune the model**
+
+```{r}
+lr_res <- 
+  lr_workflow %>% 
+  tune_grid(val_set,
+            grid = lr_reg_grid,
+            control = control_grid(save_pred = TRUE),
+            metrics = metric_set(roc_auc))
+```
+
+```{r}
+lr_plot <- 
+  lr_res %>% 
+  collect_metrics() %>% 
+  ggplot(aes(x = penalty, y = mean)) + 
+  geom_point() + 
+  geom_line() + 
+  ylab("Area under the ROC Curve") +
+  scale_x_log10(labels = scales::label_number())
+
+lr_plot 
+```
+
+```{r}
+top_models <-
+  lr_res %>% 
+  show_best("roc_auc", n = 15) %>% 
+  arrange(penalty) 
+top_models
+
+```
+
+```{r}
+lr_best <- 
+  lr_res %>% 
+  collect_metrics() %>% 
+  arrange(penalty) %>% 
+  slice(12)
+lr_best
+
+```
+
+```{r}
+lr_auc <- 
+  lr_res %>% 
+  collect_predictions(parameters = lr_best) %>% 
+  roc_curve(children, .pred_children) %>% 
+  mutate(model = "Logistic Regression")
+
+autoplot(lr_auc)
+```
+
+**Explaination:**
+
+In the case study, the "recipe" function is used for data preparation, detailing steps to transform raw data into a format suitable for modeling, such as extracting date-based features, creating holiday indicators, and normalizing numeric variables. The "workflow" function bundles the model and its preprocessing recipe, simplifying model management and ensuring consistent data preprocessing for both training and prediction.
+
+The `tune_grid` function is employed for hyperparameter tuning, specifically to find the optimal penalty value for the logistic regression model. It trains models over a specified grid of penalty values, evaluates their performance on a validation set using a chosen metric (e.g., area under the ROC curve), and identifies the best-performing model. This systematic approach ensures the selection of hyperparameters that enhance model performance.
+
+## Question B
+
+## A SECOND MODEL: TREE-BASED ENSEMBLE
+
+```{r}
+cores <- parallel::detectCores()
+cores
+
+```
+
+```{r}
+rf_mod <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores) %>% 
+  set_mode("classification")
+```
+
+### **Create the recipe and workflow**
+
+```{r}
+rf_recipe <- 
+  recipe(children ~ ., data = hotel_other) %>% 
+  step_date(arrival_date) %>% 
+  step_holiday(arrival_date) %>% 
+  step_rm(arrival_date) 
+```
+
+```{r}
+rf_workflow <- 
+  workflow() %>% 
+  add_model(rf_mod) %>% 
+  add_recipe(rf_recipe)
+```
+
+### **Train and tune the model**
+
+```{r}
+rf_mod
+
+```
+
+```{r}
+set.seed(345)
+rf_res <- 
+  rf_workflow %>% 
+  tune_grid(val_set,
+            grid = 25,
+            control = control_grid(save_pred = TRUE),
+            metrics = metric_set(roc_auc))
+
+```
+
+```{r}
+rf_res %>% 
+  show_best(metric = "roc_auc")
+
+```
+
+```{r}
+autoplot(rf_res)
+```
+
+```{r}
+rf_best <- 
+  rf_res %>% 
+  select_best(metric = "roc_auc")
+rf_best
+
+```
+
+```{r}
+rf_res %>% 
+  collect_predictions()
+
+```
+
+```{r}
+rf_auc <- 
+  rf_res %>% 
+  collect_predictions(parameters = rf_best) %>% 
+  roc_curve(children, .pred_children) %>% 
+  mutate(model = "Random Forest")
+```
+
+```{r}
+bind_rows(rf_auc, lr_auc) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, col = model)) + 
+  geom_path(lwd = 1.5, alpha = 0.8) +
+  geom_abline(lty = 3) + 
+  coord_equal() + 
+  scale_color_viridis_d(option = "plasma", end = .6)
+```
+
+## Question c
+
+From the Roc curves we can see that random forest as better for classifying a hotel booking as with children or no children.
+
+------------------------------------------------------------------------
+
+## THE LAST FIT
+
+```{r}
+# the last model
+last_rf_mod <- 
+  rand_forest(mtry = 8, min_n = 7, trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores, importance = "impurity") %>% 
+  set_mode("classification")
+
+# the last workflow
+last_rf_workflow <- 
+  rf_workflow %>% 
+  update_model(last_rf_mod)
+
+# the last fit
+set.seed(345)
+last_rf_fit <- 
+  last_rf_workflow %>% 
+  last_fit(splits)
+
+last_rf_fit
+
+```
+
+```{r}
+last_rf_fit %>% 
+  collect_metrics()
+
+```
+
+```{r}
+last_rf_fit %>% 
+  extract_fit_parsnip() %>% 
+  vip(num_features = 20)
+```
+
+```{r}
+last_rf_fit %>% 
+  collect_predictions() %>% 
+  roc_curve(children, .pred_children) %>% 
+  autoplot()
+```
