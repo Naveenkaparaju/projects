@@ -1,0 +1,110 @@
+---
+title: "Stat_650_final_project"
+author: "Preethi Bommineni & Naveen Kumar Kaparaju"
+format: pdf
+editor: visual
+---
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(tidyverse)
+data <- read.csv("diabetes.csv")
+  head(data)
+  #About the data
+dim(data)
+str(data)
+#Summary Statistics
+ summary(data)
+ 
+```
+```{r}
+#mutate the data
+ diabetes_data <- data %>%
+  mutate(BMI_category = ifelse(BMI < 18.5, "Underweight",
+                               ifelse(BMI < 25, "Normal weight",
+                                      ifelse(BMI < 30, "Overweight", "Obese"))))
+#By age
+diabetes_data$Outcome <- as.factor(diabetes_data$Outcome)
+# Create a new column to hold the factor values
+#0-1(0-18 years teen age and below), 19-40(Young Age), 41-60(middle age), 60-85(Old #Age)
+diabetes_data$Age <- cut(diabetes_data$Age,
+                          breaks=c(21, 40, 60, 85),
+                          labels=c("young Age","Middle Age","Elder & Wise"),
+                          include.lowest=TRUE)
+summary(diabetes_data)
+```
+**Data Cleaning**
+```{r}
+colSums(is.na(data))
+```
+```{r}
+# Bar Plot of Age vs Outcome
+ggplot(diabetes_data, aes(x = factor(Age), fill = factor(Outcome))) +
+  geom_bar(position = "dodge", alpha = 0.7) +
+  labs(
+    title = "Bar Plot of Age vs Outcome",
+    x = "Age",
+    y = "Count",
+    fill = "Outcome"
+)+
+scale_fill_manual(values = c("blue", "red"))
+```
+```{r}
+# Scatter Plot of Glucose vs BMI
+ggplot(diabetes_data, aes(x = Glucose, y = BMI, color = factor(Outcome))) +
+  geom_point() +
+  labs(title = "Scatter Plot of Glucose vs BMI",
+       x = "Glucose",
+       y = "BMI",
+       color = "Outcome") +
+  scale_color_manual(values = c("blue", "red"))
+```
+```{r}
+# Boxplot of Age Group vs Plasma Glucose
+ggplot(diabetes_data, aes(x = factor(Age), y = Glucose, fill = factor(Outcome))) +
+  geom_boxplot() +
+  labs(title = "Boxplot of Age Group vs Glucose",
+       x = "Age Group",
+       y = "Glucose",
+       fill = "Outcome") +
+  scale_fill_manual(values = c("blue", "red"))
+```
+```{r}
+# Scatter Plot of Insulin vs Plasma Glucose
+ggplot(diabetes_data, aes(x = Insulin, y = Glucose, color = factor(Outcome))) +
+  geom_point() +
+  labs(title = "Scatter Plot of Insulin vs Glucose",
+       x = "Insulin",
+       y = "Glucose",
+       color = "Outcome") +
+  scale_color_manual(values = c("blue", "red"))
+```
+```{r}
+iqr_glucose <- IQR(diabetes_data$Glucose)
+iqr_insulin <- IQR(diabetes_data$Insulin)
+# Define upper and lower bounds to filter outliers
+upper_bound_glucose <- quantile(diabetes_data$Glucose, 0.75) + 1.5 * iqr_glucose
+lower_bound_glucose <- quantile(diabetes_data$Glucose, 0.25) - 1.5 * iqr_glucose
+upper_bound_insulin <- quantile(diabetes_data$Insulin, 0.75) + 1.5 * iqr_insulin
+lower_bound_insulin <- quantile(diabetes_data$Insulin, 0.25) - 1.5 * iqr_insulin
+# Filter the data to exclude outliers
+filtered_data <- diabetes_data %>%
+  filter(
+    Glucose >= lower_bound_glucose, Glucose <= upper_bound_glucose,
+    Insulin >= lower_bound_insulin, Insulin <= upper_bound_insulin
+)
+# Scatter Plot of Glucose vs Insulin without outliers
+ggplot(filtered_data, aes(x = Insulin, y = Glucose, color = factor(Outcome))) +
+  geom_point() +
+  labs(
+    title = "Scatter Plot of Glucose vs Insulin without Outliers",
+    x = "Insulin",
+    y = "Plasma Glucose",
+    color = "Outcome"
+)+
+scale_color_manual(values = c("blue", "red"))
+```
+
+
+
